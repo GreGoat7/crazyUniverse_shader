@@ -1,0 +1,634 @@
+<body>
+  <div id="container"></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    canvas {
+      display: block;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+  </style>
+  <script id="vertexShader" type="x-shader/x-vertex">
+    void main() {
+        gl_Position = vec4( position, 1.0 );
+    }
+  </script>
+  <script id="fragmentShader" type="x-shader/x-fragment">
+    uniform vec2 u_resolution;
+    uniform float u_time;
+    uniform vec2 u_mouse;
+    uniform vec2 u_planetPosition2;
+    uniform vec2 u_pacmanPosition;
+    uniform vec2 u_planetRadius2;
+    uniform float u_pacmanRadius;
+    uniform bool u_planet2PacCollision;
+    uniform bool u_planet1PacCollision;
+    uniform bool u_planet3PacCollision;
+    uniform bool u_isExplosion3;
+    uniform bool u_isExplosion1;
+    uniform bool u_isExplosion2;
+    uniform vec2 u_planetPosition1;
+    uniform vec2 u_planetPosition3;
+    uniform vec2 u_kometPosition;
+
+
+    float rand(vec2 co){
+        return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+    }
+
+    float noise(vec2 st) {
+        vec2 i = floor(st);
+        vec2 f = fract(st);
+
+        // Vier Ecken im 2D ganzzahligen Raum
+        float a = rand(i);
+        float b = rand(i + vec2(1.0, 0.0));
+        float c = rand(i + vec2(0.0, 1.0));
+        float d = rand(i + vec2(1.0, 1.0));
+
+        // Interpolieren
+        vec2 u = f*f*(3.0-2.0*f);
+        return mix(a, b, u.x) +
+                (c - a)* u.y * (1.0 - u.x) +
+                (d - b) * u.x * u.y;
+    }
+
+    void main() {
+        vec2 st = gl_FragCoord.xy / u_resolution.xy;
+        st.x *= u_resolution.x / u_resolution.y;
+
+        vec3 color = vec3(0.0);
+
+
+        // Einen Nebelhintergrund hinzufügen
+        float n = noise(st * 15.0 + u_time);
+        color += vec3(n) * vec3(0.1, 0.1, 0.2); // Nebel hinzufügen
+
+        // Einen Sternenhintergrund hinzufügen
+        float stars = rand(st*100.0) > 0.98 ? 1.0 : 0.0;
+        color += vec3(stars) * vec3(0.500,0.465,0.033); // Sterne hinzufügen
+    //// ------ Sonne -----
+        // Zentrum der Sonne
+        vec2 center = vec2(0.5, 0.5);
+
+
+
+        // Berechnung des Abstands vom Zentrum
+        float dist = distance(st, center);
+
+        // Sonnenradius
+        float sunRadius = 0.1;
+
+        // Sonne mit Glühen
+        float distToSun = distance(st, center);
+        float glowStrength = smoothstep(sunRadius, sunRadius + 0.05, distToSun);
+        color += mix(vec3(1.0, 0.5, 0.0), vec3(0.0), glowStrength);
+        // Zeichne die Sonne
+
+        if (dist < sunRadius) {
+            color = vec3(1.0, 1.0, 0.0); // Gelb
+        }
+
+
+    /// -------- Planeten --------
+        // Radien der Umlaufbahnen
+        float orbitRadius = sunRadius + 0.1;
+        float orbitRadius2 = sunRadius + 0.3;
+
+
+        // Zeichne die Umlaufbahnen
+        // Zeichne die Umlaufbahnen
+
+        float lineWidth = 0.002;
+        if (abs(dist - orbitRadius) < lineWidth) {
+            color = vec3(1.0, 1.0, 1.0); // Weiß für die Umlaufbahn
+        }
+        if (abs(dist - orbitRadius2) < lineWidth) {
+            color = vec3(0.942, 0.970, 1.000); // Weiß für die zweite Umlaufbahn
+        }
+
+
+
+        // ----- Planet 1 ------
+        // Parameter für die Bewegung des inneren Planeten
+        float angle = u_time;
+        float exitTime = 10.0;
+        float exitAngle = exitTime;
+        vec2 exitPoint = center + vec2(cos(exitAngle), sin(exitAngle)) * orbitRadius;
+        vec2 tangentDirection = vec2(-sin(exitAngle), cos(exitAngle));
+
+        float planetRadius = 0.025;
+
+        // Positionsberechnung für den inneren Planeten
+        vec2 planetPosition = u_planetPosition1;
+
+        // ----- Planet 2 -------
+
+        // Berechnen der Position der Kugeln auf den Umlaufbahnen
+        float angle2 = u_time * 0.3;
+        vec2 PlanetPosition2 = u_planetPosition2;
+
+        float planetRadius2 = 0.04;
+
+
+
+        // ------- Planet 3 Ellipsenlaufbahn ------
+        // Parameter für die elliptische Umlaufbahn
+        float majorAxis = 0.45; // Länge der großen Halbachse (Hauptachse)
+        float minorAxis = 0.25; // Länge der kleinen Halbachse (Nebenachse)
+        float orbitSpeed = 0.2; // Geschwindigkeit der Umlaufbahn
+        vec2 orbitCenter = vec2(0.5, 0.5); // Zentrum der Umlaufbahn
+
+        vec2 ellipsePos = u_planetPosition3;
+
+        // Zeichne den dritten Planeten
+        float thirdPlanetRadius = 0.03;
+
+
+            // Zeichne die Umlaufbahn des dritten Planeten
+        float ellipseOutlineWidth = 0.009; // Breite der Umlaufbahnlinie
+        vec2 normalizedPos = (st - orbitCenter) / vec2(majorAxis, minorAxis);
+        float ellipseEquation = (normalizedPos.x * normalizedPos.x) + (normalizedPos.y * normalizedPos.y);
+        if (abs(ellipseEquation - 1.0) < ellipseOutlineWidth) {
+            color = mix(color, vec3(1.0), smoothstep(ellipseOutlineWidth, ellipseOutlineWidth - 0.001, abs(ellipseEquation - 1.0)));
+        }
+
+
+
+
+    // ---- freier Komet mir Randabprallern -----
+
+       // Parameter für den Kometen
+        float KometRadius = 0.03;
+
+        // Anpassung der Kometenposition, sodass der Kometenrand berücksichtigt wird
+        vec2 Kometlaufbahn = u_kometPosition;
+
+        // Zeichne den Kometen
+        if (distance(st, Kometlaufbahn) < KometRadius) {
+            color = vec3(1.0, 0.0, 0.0); // Farbe des Kometen
+        }
+
+
+        // Farbverlauf für den Feuerball
+        float distToKomet = distance(st, Kometlaufbahn);
+        float outerRadius = KometRadius * 1.5; // Äußere Radius des glühenden Effekts
+        float innerGlow = smoothstep(KometRadius, KometRadius * 0.8, distToKomet); // Inneres Leuchten
+        float outerGlow = smoothstep(outerRadius, KometRadius, distToKomet); // Äußeres Leuchten
+
+        vec3 kometInnerColor = vec3(1.000,0.0,0.0); // Innere Farbe des Feuerballs, mehr Rot
+        vec3 kometOuterColor = vec3(1.000,0.360,0.029); // Äußere Farbe des Feuerballs, mehr Rot und dunkler
+
+        // Farbe des Kometen mit glühendem Effekt
+        if (distToKomet < outerRadius) {
+            vec3 kometColor = mix(kometOuterColor, kometInnerColor, innerGlow);
+            kometColor *= outerGlow; // Wende äußeres Leuchten an
+            color += kometColor; // Füge Kometenfarbe zum Hintergrund hinzu
+        }
+
+        if (u_isExplosion3) {
+            float distToExplosion = distance(st, u_planetPosition3);
+            float explosionRadius = 0.1; // Radius der Explosion
+            float glowStrength = smoothstep(explosionRadius, explosionRadius + 0.05, distToExplosion);
+            color += mix(vec3(1.0, 0.5, 0.0), vec3(0.0), glowStrength); // Explosionsfarbe
+        }
+
+        if (u_isExplosion1) {
+            float distToExplosion = distance(st, u_planetPosition1);
+            float explosionRadius = 0.1; // Radius der Explosion
+            float glowStrength = smoothstep(explosionRadius, explosionRadius + 0.05, distToExplosion);
+            color += mix(vec3(1.0, 0.5, 0.0), vec3(0.0), glowStrength); // Explosionsfarbe
+        }
+
+        if (u_isExplosion2) {
+            float distToExplosion = distance(st, u_planetPosition2);
+            float explosionRadius = 0.1; // Radius der Explosion
+            float glowStrength = smoothstep(explosionRadius, explosionRadius + 0.05, distToExplosion);
+            color += mix(vec3(1.0, 0.5, 0.0), vec3(0.0), glowStrength); // Explosionsfarbe
+        }
+
+
+
+
+    // --------- Pacman --------
+    	// Pacman-Parameter
+        float pacmanRadius = u_pacmanRadius;
+        vec2 pacmanPosition = u_pacmanPosition;
+
+
+        // Pacman-Maul-Parameter
+        float maulWinkel = radians(45.0); // Maulöffnungswinkel in Grad
+        float maulRichtung = radians(u_time * 50.0); // Maul rotiert mit der Zeit
+
+        // Zeichne Pacman mit rotierendem Maul
+        float distPAC = distance(st, pacmanPosition);
+        if (distPAC < pacmanRadius) {
+            // Berechne Winkel relativ zur Pacman-Position
+            float winkel = atan(st.y - pacmanPosition.y, st.x - pacmanPosition.x);
+
+            // Normalisiere den Winkel zwischen 0 und 2*PI
+            if (winkel < 0.0) winkel += 6.28318530718;
+
+            // Rotierender Maulbereich
+            float maulRotationsgeschwindigkeit = 1.0; // Geschwindigkeit der Maulrotation
+            float maulStartWinkel = mod(u_time * maulRotationsgeschwindigkeit, 6.28318530718);
+            float maulEndWinkel = maulStartWinkel + radians(90.0); // 90 Grad Maulöffnung
+
+            // Überprüfe, ob Pixel im Maulbereich liegt
+            if (!(winkel > maulStartWinkel && winkel < maulEndWinkel)) {
+                color = vec3(1.0, 1.0, 0.0); // Gelb für Pacman
+            }
+        }
+
+        if (u_planet2PacCollision || u_isExplosion2) {
+
+        }
+        else {
+            if(distance(st, PlanetPosition2) < planetRadius2){
+                color = vec3(0.0, 0.0, 1.0);
+            }
+        }
+
+        if (u_planet1PacCollision || u_isExplosion1){
+
+        }
+        else{
+            if (distance(st, planetPosition) < planetRadius) {
+                color = vec3(0.0, 0.0, 5.0); // Farbe des inneren Planeten
+             }
+        }
+
+        if(u_planet3PacCollision || u_isExplosion3){
+
+        }
+        else{
+            if (distance(st, ellipsePos) < thirdPlanetRadius) {
+            color = vec3(0.5, 0.8, 0.2); // Grüne Farbe für den dritten Planeten
+        }
+        }
+
+
+
+    // ------Supernova------
+         // Zentrum des Supernova-Sterns (unten links)
+        vec2 supernovaCenter = vec2(0.1, 0.2);
+
+        // Supernova-Parameter
+        float supernovaPeriod = 7.0; // Wiederholungsperiode der Supernova
+        float supernovaDuration = 2.0; // Dauer der Supernova
+        float supernovaMaxSize = 0.2; // Maximale Größe der Supernova
+        float normalStarSize = 0.02; // Größe des Sterns außerhalb der Supernova
+
+        // Berechnung des Abstands vom Supernova-Zentrum
+        float distToSupernova = distance(st, supernovaCenter);
+
+        // Supernova-Effekt berechnen
+        float cycleTime = mod(u_time, supernovaPeriod);
+        bool isSupernova = cycleTime < supernovaDuration;
+        float supernovaProgress = min(cycleTime / supernovaDuration, 1.0);
+        float supernovaGlow = isSupernova ? (1.0 - supernovaProgress) : 0.0;
+        float supernovaSize = isSupernova ? (supernovaMaxSize * supernovaProgress) : normalStarSize;
+
+        // Stern oder Supernova zeichnen
+        if (distToSupernova < supernovaSize) {
+            vec3 starColor = isSupernova ? vec3(1.0, 0.5, 0.0) : vec3(1.000, 0.841, 0.092);
+            float starGlow = isSupernova ? supernovaGlow : smoothstep(normalStarSize, normalStarSize + 0.05, distToSupernova);
+            color += mix(starColor, vec3(0.0), starGlow);
+        }
+
+
+
+
+        gl_FragColor = vec4(color, 1.0);
+
+
+    }
+  </script>
+  <script>
+    var container;
+    var camera, scene, renderer, clock;
+    var uniforms;
+
+    init();
+    animate();
+
+    function init() {
+      container = document.getElementById("container");
+
+      camera = new THREE.Camera();
+      camera.position.z = 1;
+
+      scene = new THREE.Scene();
+      clock = new THREE.Clock();
+
+      var geometry = new THREE.PlaneBufferGeometry(2, 2);
+
+      uniforms = {
+        u_time: { type: "f", value: 1.0 },
+        u_resolution: { type: "v2", value: new THREE.Vector2() },
+        u_mouse: { type: "v2", value: new THREE.Vector2() },
+        u_redDotActive: { type: "i", value: 0 }, // Hinzugefügte Zustandsuniform
+        u_redDotPosition: { type: "v2", value: new THREE.Vector2(0.2, 0.5) }, // Hinzugefügte Positionsuniform
+        u_planetPosition2: { type: "v2", value: new THREE.Vector2() },
+        u_planetPosition1: { type: "v2", value: new THREE.Vector2() },
+        u_planetPosition3: { type: "v2", value: new THREE.Vector2() },
+        u_kometPosition: { type: "v2", value: new THREE.Vector2() },
+        u_pacmanPosition: { type: "v2", value: new THREE.Vector2() },
+        u_planet2PacCollision: { type: "b", value: false },
+        u_planet1PacCollision: { type: "b", value: false },
+        u_planet3PacCollision: { type: "b", value: false },
+        u_isExplosion3: { type: "b", value: false },
+        u_isExplosion1: { type: "b", value: false },
+        u_isExplosion2: { type: "b", value: false },
+        u_pacmanRadius: { type: "f", value: 0.01 },
+        u_explosionTime: { type: "f", value: 0.0 },
+      };
+
+      var material = new THREE.ShaderMaterial({
+        uniforms: uniforms,
+        vertexShader: document.getElementById("vertexShader").textContent,
+        fragmentShader: document.getElementById("fragmentShader").textContent,
+      });
+
+      var mesh = new THREE.Mesh(geometry, material);
+      scene.add(mesh);
+
+      renderer = new THREE.WebGLRenderer();
+      renderer.setPixelRatio(window.devicePixelRatio);
+
+      container.appendChild(renderer.domElement);
+
+      onWindowResize();
+      window.addEventListener("resize", onWindowResize, false);
+
+      document.onmousemove = function (e) {
+        var rect = renderer.domElement.getBoundingClientRect();
+
+        uniforms.u_mouse.value.x =
+          (e.clientX - rect.left) * (renderer.domElement.width / rect.width);
+        uniforms.u_mouse.value.y =
+          (rect.bottom - e.clientY) *
+          (renderer.domElement.height / rect.height);
+
+        updatePacmanPosition(
+          uniforms.u_mouse.value,
+          uniforms.u_resolution.value
+        );
+      };
+    }
+
+    function onWindowResize(event) {
+      // Hier nehmen wir das kleinere Maß zwischen der Breite und Höhe des Fensters,
+      // um sicherzustellen, dass das Canvas quadratisch ist und auf den Bildschirm passt.
+      var size = Math.min(window.innerWidth, window.innerHeight);
+      renderer.setSize(size, size);
+      uniforms.u_resolution.value.x = renderer.domElement.width;
+      uniforms.u_resolution.value.y = renderer.domElement.height;
+
+      // Aktualisieren Sie auch die Position von Pacman, falls die Maus nicht bewegt wurde
+      updatePacmanPosition(uniforms.u_mouse.value, uniforms.u_resolution.value);
+    }
+
+    var orbitRadius2 = 0.4; // Sie müssen sicherstellen, dass dieser Wert mit dem im Shader übereinstimmt
+    var pacmanRadius = uniforms.u_pacmanRadius.value;
+    var planetRadius2 = 0.04;
+    var planetRadius1 = 0.025;
+    var planetRadius3 = 0.03;
+    var kometRadius = 0.045;
+
+    var explosionStartTime3 = null;
+    var explosionStartTime1 = null;
+    var explosionStartTime2 = null;
+
+    const explosionDuration = 3000; // 3 Sekunden in Millisekunden
+
+    function updatePacmanPosition(mouse, resolution) {
+      // Berechnen Sie die Position von Pacman basierend auf den Mauskoordinaten
+      // und dem Seitenverhältnis des Canvas, um Verzerrungen zu vermeiden.
+      var aspectRatio = resolution.x / resolution.y;
+      var pacmanX = (mouse.x / resolution.x) * aspectRatio;
+      var pacmanY = mouse.y / resolution.y; // Y umkehren, da WebGL y=0 am unteren Rand hat
+
+      // Aktualisieren Sie die uniforme Variable für die Position von Pacman
+      uniforms.u_pacmanPosition.value.x = pacmanX;
+      uniforms.u_pacmanPosition.value.y = pacmanY;
+    }
+
+    function updatePosition(time) {
+      var angle2 = time * 0.3;
+      var x = Math.cos(angle2) * orbitRadius2; // cos-Funktion in JS verwendet Radiant
+      var y = Math.sin(angle2) * orbitRadius2; // sin-Funktion in JS verwendet Radiant
+
+      // Angenommen, Ihr Shader hat eine uniforme Variable namens 'u_planetPosition2'
+      uniforms.u_planetPosition2.value = new THREE.Vector2(x + 0.5, y + 0.5);
+    }
+
+    function updatePositionPlanet1(time) {
+      var exitTime = 10.0; // Zeitpunkt, an dem der Planet die Umlaufbahn verlässt
+      var orbitRadius = 0.1 + 0.1; // Radius der Umlaufbahn
+      var center = new THREE.Vector2(0.5, 0.5); // Zentrum der Umlaufbahn
+      var angle = time; // Winkel basierend auf der aktuellen Zeit
+      var planetRadius = 0.02; // Radius des Planeten
+
+      var exitAngle = exitTime; // Winkel im Moment des Verlassens der Umlaufbahn
+      var exitPoint = new THREE.Vector2(
+        center.x + Math.cos(exitAngle) * orbitRadius,
+        center.y + Math.sin(exitAngle) * orbitRadius
+      ); // Punkt, an dem der Planet die Umlaufbahn verlässt
+      var tangentDirection = new THREE.Vector2(
+        -Math.sin(exitAngle),
+        Math.cos(exitAngle)
+      ); // Tangentenrichtung am Austrittspunkt
+
+      var planetPosition;
+
+      if (time < exitTime) {
+        // Wenn die aktuelle Zeit kleiner als exitTime ist, folgt der Planet der Umlaufbahn
+        planetPosition = new THREE.Vector2(
+          center.x + Math.cos(angle) * orbitRadius,
+          center.y + Math.sin(angle) * orbitRadius
+        );
+      } else {
+        // Wenn die aktuelle Zeit größer oder gleich exitTime ist, fliegt der Planet tangential weg
+        var timeSinceExit = time - exitTime;
+        planetPosition = new THREE.Vector2(
+          exitPoint.x + tangentDirection.x * timeSinceExit * 0.1,
+          exitPoint.y + tangentDirection.y * timeSinceExit * 0.1
+        );
+      }
+
+      // Aktualisieren Sie die Uniform mit der neuen Position des Planeten
+      uniforms.u_planetPosition1.value = planetPosition;
+    }
+
+    function updateEllipsePosition(time) {
+      var majorAxis = 0.45;
+      var minorAxis = 0.25;
+      var orbitSpeed = 0.2;
+      var center = new THREE.Vector2(0.5, 0.5); // Zentrum der Umlaufbahn
+
+      var orbitAngle = (time * orbitSpeed) % (2.0 * Math.PI); // Aktueller Winkel auf der Umlaufbahn
+      var x = center.x + majorAxis * Math.cos(orbitAngle); // X-Position
+      var y = center.y + minorAxis * Math.sin(orbitAngle); // Y-Position
+
+      // Angenommen, Ihr Shader hat eine uniforme Variable namens 'u_ellipsePosition'
+      uniforms.u_planetPosition3.value = new THREE.Vector2(x, y);
+    }
+
+    function updateKometPosition(time) {
+      const KometRadius = 0.03;
+      const KometGeschwindigkeitX = 4.0 / 15.0;
+      const KometGeschwindigkeitY = 7.0 / 25.0;
+
+      const KometZeitX =
+        (time * KometGeschwindigkeitX) % (2.0 - 2.0 * KometRadius);
+      const KometZeitY =
+        (time * KometGeschwindigkeitY) % (2.0 - 2.0 * KometRadius);
+
+      let KometlaufbahnX =
+        KometZeitX > 1.0 - KometRadius
+          ? 2.0 * (1.0 - KometRadius) - KometZeitX
+          : KometZeitX;
+      let KometlaufbahnY =
+        KometZeitY > 1.0 - KometRadius
+          ? 2.0 * (1.0 - KometRadius) - KometZeitY
+          : KometZeitY;
+
+      KometlaufbahnX = KometlaufbahnX * (1.0 - KometRadius) + KometRadius;
+      KometlaufbahnY = KometlaufbahnY * (1.0 - KometRadius) + KometRadius;
+
+      // Angenommen, dein Shader hat eine Uniform namens 'u_kometPosition'
+      uniforms.u_kometPosition.value = new THREE.Vector2(
+        KometlaufbahnX,
+        KometlaufbahnY
+      );
+    }
+
+    // Berechnet die Distanz zwischen zwei Vektoren
+    function calculateDistance(vec2a, vec2b) {
+      var dx = vec2a.x - vec2b.x;
+      var dy = vec2a.y - vec2b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    // Überprüft, ob eine Kollision zwischen zwei Kreisen stattgefunden hat
+    function checkCollision(center1, center2, radius1, radius2) {
+      return calculateDistance(center1, center2) < radius1 + radius2;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      render();
+    }
+
+    function render() {
+      uniforms.u_time.value += clock.getDelta();
+      var elapsedTime = clock.getElapsedTime();
+
+      updatePosition(elapsedTime); // aktualisiert die Positionen basierend auf der vergangenen Zeit#
+      updatePositionPlanet1(elapsedTime);
+      updateEllipsePosition(elapsedTime);
+      updateKometPosition(elapsedTime);
+
+      var isCollision2 = checkCollision(
+        uniforms.u_pacmanPosition.value,
+        uniforms.u_planetPosition2.value,
+        pacmanRadius,
+        planetRadius2
+      );
+
+      var isCollision1 = checkCollision(
+        uniforms.u_pacmanPosition.value,
+        uniforms.u_planetPosition1.value,
+        pacmanRadius,
+        planetRadius1
+      );
+
+      var isCollision3 = checkCollision(
+        uniforms.u_pacmanPosition.value,
+        uniforms.u_planetPosition3.value,
+        pacmanRadius,
+        planetRadius3
+      );
+
+      var isCollision4 = checkCollision(
+        uniforms.u_kometPosition.value,
+        uniforms.u_planetPosition3.value,
+        kometRadius,
+        planetRadius3
+      );
+
+      var isCollision5 = checkCollision(
+        uniforms.u_kometPosition.value,
+        uniforms.u_planetPosition1.value,
+        kometRadius,
+        planetRadius1
+      );
+
+      var isCollision6 = checkCollision(
+        uniforms.u_kometPosition.value,
+        uniforms.u_planetPosition2.value,
+        kometRadius,
+        planetRadius2
+      );
+
+      // Setzen Sie die Uniform 'u_planet2PacCollision' basierend auf dem Kollisionsergebnis
+      // Wir verwenden 0 für true (Kollision) und 1 für false (keine Kollision)
+      uniforms.u_planet2PacCollision.value = isCollision2 ? 1 : 0;
+      uniforms.u_planet1PacCollision.value = isCollision1 ? 1 : 0;
+      uniforms.u_planet3PacCollision.value = isCollision3 ? 1 : 0;
+      if (
+        (isCollision1 && !uniforms.u_isExplosion1.value) ||
+        (isCollision2 && !uniforms.u_isExplosion2.value) ||
+        (isCollision3 && !uniforms.u_isExplosion3.value)
+      ) {
+        uniforms.u_pacmanRadius.value = 0.06;
+      } else {
+        uniforms.u_pacmanRadius.value = 0.01;
+      }
+
+      if (isCollision4 && uniforms.u_isExplosion3.value == 0) {
+        uniforms.u_isExplosion3.value = 1;
+        explosionStartTime3 = Date.now(); // Beginn der Explosion speichern
+      }
+
+      if (explosionStartTime3) {
+        if (Date.now() - explosionStartTime3 > explosionDuration) {
+          // Explosion beenden
+          uniforms.u_isExplosion3.value = 0;
+          explosionStartTime3 = null; // Zurücksetzen der Explosionsstartzeit
+        }
+      }
+
+      if (isCollision5 && uniforms.u_isExplosion1.value == 0) {
+        uniforms.u_isExplosion1.value = 1;
+        explosionStartTime1 = Date.now(); // Beginn der Explosion speichern
+      }
+
+      if (explosionStartTime1) {
+        if (Date.now() - explosionStartTime1 > explosionDuration) {
+          // Explosion beenden
+          uniforms.u_isExplosion1.value = 0;
+          explosionStartTime1 = null; // Zurücksetzen der Explosionsstartzeit
+        }
+      }
+
+      if (isCollision6 && uniforms.u_isExplosion2.value == 0) {
+        uniforms.u_isExplosion2.value = 1;
+        explosionStartTime2 = Date.now(); // Beginn der Explosion speichern
+      }
+
+      if (explosionStartTime2) {
+        if (Date.now() - explosionStartTime2 > explosionDuration) {
+          // Explosion beenden
+          uniforms.u_isExplosion2.value = 0;
+          explosionStartTime2 = null; // Zurücksetzen der Explosionsstartzeit
+        }
+      }
+
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
